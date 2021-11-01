@@ -92,19 +92,32 @@ library LongTermOrdersLib {
 
     ///@notice cancel long term swap, pay out unsold tokens and well as purchased tokens 
     function cancelLongTermSwap(LongTermOrders storage self, uint256 orderId,  mapping(address => uint256) storage reserveMap) internal {
+        _cancelLongTermSwap(self, msg.sender, orderId, reserveMap);
+    }
+
+    ///@notice cancel all long term swaps
+    function cancelAllLongTermSwaps(LongTermOrders storage self, mapping(address => uint256) storage reserveMap) internal {
+        for (uint i; i<self.orderId; i++) {
+            address user = self.orderMap[i].owner;
+            _cancelLongTermSwap(self, user, i, reserveMap);
+        }
+    }
+
+    ///@notice cancel long term swap, pay out unsold tokens and well as purchased tokens 
+    function _cancelLongTermSwap(LongTermOrders storage self, address user, uint256 orderId,  mapping(address => uint256) storage reserveMap) internal {
         //update virtual order state 
         executeVirtualOrdersUntilCurrentBlock(self, reserveMap);
 
         Order storage order = self.orderMap[orderId];
-        require(order.owner == msg.sender, 'sender must be order owner');
+        require(order.owner == user, 'sender must be order owner');
 
         OrderPoolLib.OrderPool storage OrderPool = self.OrderPoolMap[order.sellTokenId];
         (uint256 unsoldAmount, uint256 purchasedAmount) = OrderPool.cancelOrder(orderId);
 
         require(unsoldAmount > 0 || purchasedAmount > 0, 'no proceeds to withdraw');
         //transfer to owner
-        ERC20(order.buyTokenId).transfer(msg.sender, purchasedAmount);
-        ERC20(order.sellTokenId).transfer(msg.sender, unsoldAmount);
+        ERC20(order.buyTokenId).transfer(user, purchasedAmount);
+        ERC20(order.sellTokenId).transfer(user, unsoldAmount);
     }
 
     ///@notice withdraw proceeds from a long term swap (can be expired or ongoing) 

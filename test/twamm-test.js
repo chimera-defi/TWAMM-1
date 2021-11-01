@@ -397,11 +397,51 @@ describe("TWAMM", function () {
                 //expect swap to work as expected
                 expect(beforeBalanceA).to.be.lt(afterBalanceA);
                 expect(beforeBalanceB).to.be.gt(afterBalanceB);
+
             });
 
         });
+        describe("graceful shutdown", function () { 
+            it("refunds users and cancels long term swaps on shutdown", async function() {
+                const amountIn = ethers.BigNumber.from(10000000);
+                await tokenA.transfer(addr1.address, amountIn);
 
-            
+                await tokenA.transfer(addr2.address, amountIn);
+                await tokenB.transfer(addr2.address, amountIn);
+
+                // Provide some liquidity. Expect to get it back
+                await tokenA.connect(addr2).approve(twamm.address, amountIn);
+                await tokenB.connect(addr2).approve(twamm.address, amountIn);
+                // This will err out if the provided liquidity is sufficiently small and the user will recv nothing.
+                // The admin deposits 10,000,000
+                const minValidLiquidity = 100000; // ~1% of initial liquidity
+                await twamm.connect(addr2).provideLiquidity(minValidLiquidity);
+
+                //trigger long term order
+                await tokenA.connect(addr1).approve(twamm.address, amountIn);
+                //trigger long term order
+                await twamm.connect(addr1).longTermSwapFromAToB(amountIn, 10);
+                //move blocks forward, and execute virtual orders
+                await mineBlocks(3 * blockInterval);
+                await twamm.executeVirtualOrders();
+
+                const beforeBalanceA = await tokenA.balanceOf(addr2.address);
+                const beforeBalanceB = await tokenB.balanceOf(addr2.address);
+                await twamm.shutdown();
+                const afterBalanceA = await tokenA.balanceOf(addr2.address);
+                const afterBalanceB = await tokenB.balanceOf(addr2.address);
+
+                // Expect liq to be refunded
+                expect(beforeBalanceA).to.be.lt(afterBalanceA);
+                expect(beforeBalanceB).to.be.lt(afterBalanceB);
+
+                const tokenAInTwamm = await tokenA.balanceOf(twamm.address);
+                const tokenBInTwamm = await tokenB.balanceOf(twamm.address);
+                expect(tokenAInTwamm).to.be.equal(0);
+                expect(tokenBInTwamm).to.be.equal(0);
+
+            });
+        });
     });
 });
 

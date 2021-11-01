@@ -2,11 +2,15 @@
 pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
+
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
 import "./libraries/LongTermOrders.sol";
 
+import "./GracefulShutdown.sol";
+
 ///@notice TWAMM -- https://www.paradigm.xyz/2021/07/twamm/
-contract TWAMM is ERC20 {
+contract TWAMM is ERC20, GracefulShutdown {
     using LongTermOrdersLib for LongTermOrdersLib.LongTermOrders;
     using PRBMathUD60x18 for uint256;
 
@@ -23,6 +27,7 @@ contract TWAMM is ERC20 {
 
     ///@notice map token addresses to current amm reserves
     mapping(address => uint256) reserveMap;
+
 
     /// ---------------------------
     /// -----TWAMM Parameters -----
@@ -72,7 +77,6 @@ contract TWAMM is ERC20 {
                 ,address _tokenB
                 ,uint256 _orderBlockInterval
     ) ERC20(_name, _symbol) {
-        
         tokenA = _tokenA;
         tokenB = _tokenB;
         orderBlockInterval = _orderBlockInterval;
@@ -93,6 +97,7 @@ contract TWAMM is ERC20 {
         //initial LP amount is the geometric mean of supplied tokens
         uint256 lpAmount = amountA.fromUint().sqrt().mul(amountB.fromUint().sqrt()).toUint();
         _mint(msg.sender, lpAmount);
+        addLP(lpAmount);
 
         emit InitialLiquidityProvided(msg.sender, amountA, amountB);
     }
@@ -116,6 +121,7 @@ contract TWAMM is ERC20 {
         reserveMap[tokenB] += amountBIn;
 
         _mint(msg.sender, lpTokenAmount);
+        addLP(lpTokenAmount);
 
         emit LiquidityProvided(msg.sender, lpTokenAmount);
     }
@@ -127,20 +133,27 @@ contract TWAMM is ERC20 {
 
         //execute virtual orders 
         longTermOrders.executeVirtualOrdersUntilCurrentBlock(reserveMap);
-        
+        _removeLiquidityUngaurded(lpTokenAmount, msg.sender);
+
+        _burn(msg.sender, lpTokenAmount);
+        lpMap[msg.sender] -= lpTokenAmount;
+
+        emit LiquidityRemoved(msg.sender, lpTokenAmount);
+    }
+
+    ///@notice remove liquidity to the AMM without lp token transfer or gaurds
+    /// This does not burn the lp token or emit events and should not be used without gaurds
+    ///@param lpTokenAmount number of lp tokens to burn
+    function _removeLiquidityUngaurded(uint256 lpTokenAmount, address user) internal override {
         //the ratio between the number of underlying tokens and the number of lp tokens must remain invariant after burn 
         uint256 amountAOut = reserveMap[tokenA] * lpTokenAmount / totalSupply();
         uint256 amountBOut = reserveMap[tokenB] * lpTokenAmount / totalSupply();
 
-        ERC20(tokenA).transfer(msg.sender, amountAOut);
-        ERC20(tokenB).transfer(msg.sender, amountBOut);
-
         reserveMap[tokenA] -= amountAOut;
         reserveMap[tokenB] -= amountBOut;
 
-        _burn(msg.sender, lpTokenAmount);
-
-        emit LiquidityRemoved(msg.sender, lpTokenAmount);
+        ERC20(tokenA).transfer(user, amountAOut);
+        ERC20(tokenB).transfer(user, amountBOut);
     }
 
     ///@notice swap a given amount of TokenA against embedded amm 
@@ -218,5 +231,15 @@ contract TWAMM is ERC20 {
         longTermOrders.executeVirtualOrdersUntilCurrentBlock(reserveMap);
     }
 
-    
+    ///@notice function to cancel all long term orders needed for shutdown
+    function _cancelAllLongTermSwaps() internal override {
+        longTermOrders.cancelAllLongTermSwaps(reserveMap);
+    }
+
+    ///@notice Allow the pool owner to gracefully shutdown the pool experiment
+    /// cancel all virtual orders
+    /// inherited and checks that caller is owner
+    function shutdown() external {
+        _shutdown(tokenA, tokenB);
+    }
 }
