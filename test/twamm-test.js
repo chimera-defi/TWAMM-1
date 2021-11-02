@@ -442,6 +442,52 @@ describe("TWAMM", function () {
 
             });
         });
+
+        describe("rugged again :( - explore issues", function () { 
+
+            it("rugs smol depositers", async function () {
+                const amountIn = ethers.BigNumber.from(100000);
+                await tokenA.transfer(addr2.address, amountIn);
+                await tokenB.transfer(addr2.address, amountIn);
+
+                await tokenA.connect(addr2).approve(twamm.address, amountIn);
+                await tokenB.connect(addr2).approve(twamm.address, amountIn);
+                const invalidLiq = 10000; // ~0.1% of initial liquidity
+                await twamm.connect(addr2).provideLiquidity(invalidLiq);
+
+                const beforeBalanceA = await tokenA.balanceOf(addr2.address);
+                const beforeBalanceB = await tokenB.balanceOf(addr2.address);
+                await twamm.removeLiquidity(invalidLiq);
+                const afterBalanceA = await tokenA.balanceOf(addr2.address);
+                const afterBalanceB = await tokenB.balanceOf(addr2.address);
+
+                expect(beforeBalanceA).to.be.equal(afterBalanceA);
+                expect(beforeBalanceB).to.be.equal(afterBalanceB);
+            })
+
+            it("whale can rug initial depositer", async function () {
+                const amountIn = ethers.BigNumber.from(100000000000);
+                await tokenA.transfer(addr2.address, amountIn);
+                await tokenB.transfer(addr2.address, amountIn);
+
+                await tokenA.connect(addr2).approve(twamm.address, amountIn);
+                await tokenB.connect(addr2).approve(twamm.address, amountIn);
+                const invalidLiq = amountIn; // ~1000x of initial liquidity
+                totalSupply = await twamm.totalSupply();
+
+                await twamm.connect(addr2).provideLiquidity(invalidLiq);
+                const beforeBalanceA = await tokenA.balanceOf(addr2.address);
+                const beforeBalanceB = await tokenB.balanceOf(addr2.address);
+                await twamm.connect(addr2).removeLiquidity(invalidLiq);
+                const afterBalanceA = await tokenA.balanceOf(addr2.address);
+                const afterBalanceB = await tokenB.balanceOf(addr2.address);
+
+                expect(beforeBalanceA).to.be.lt(afterBalanceA);
+                expect(beforeBalanceB).to.be.lt(afterBalanceB);
+            })
+
+        })
+
     });
 });
 
