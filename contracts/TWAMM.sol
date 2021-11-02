@@ -7,10 +7,10 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import "./libraries/LongTermOrders.sol";
 
-import "./GracefulShutdown.sol";
+import "./GaurdRails.sol";
 
 ///@notice TWAMM -- https://www.paradigm.xyz/2021/07/twamm/
-contract TWAMM is ERC20, GracefulShutdown {
+contract TWAMM is ERC20, GaurdRails {
     using LongTermOrdersLib for LongTermOrdersLib.LongTermOrders;
     using PRBMathUD60x18 for uint256;
 
@@ -106,6 +106,7 @@ contract TWAMM is ERC20, GracefulShutdown {
     ///@param lpTokenAmount number of lp tokens to mint with new liquidity  
     function provideLiquidity(uint256 lpTokenAmount) external {
         require(totalSupply() != 0, 'no liquidity has been provided yet, need to call provideInitialLiquidity');
+        super._beforeLiquidityAdd(lpTokenAmount, totalSupply());
 
         //execute virtual orders 
         longTermOrders.executeVirtualOrdersUntilCurrentBlock(reserveMap);
@@ -230,6 +231,9 @@ contract TWAMM is ERC20, GracefulShutdown {
     function executeVirtualOrders() public {
         longTermOrders.executeVirtualOrdersUntilCurrentBlock(reserveMap);
     }
+
+
+    /// Extras. These are not part of frankies initial code
 
     ///@notice function to cancel all long term orders needed for shutdown
     function _cancelAllLongTermSwaps() internal override {

@@ -16,6 +16,10 @@ abstract contract GracefulShutdown is Ownable {
     ///@notice information bool. Do not trade if it is true
     bool public isShutdown;
 
+    ///@notice gaurd rails - if implemented and enabled, disable rug pull code. 
+    ///You still shouldnt be interacting with this contract if youre not testing/the admin
+    bool public gaurdRailsActive;
+
     constructor() {}
 
     ///@notice remove liquidity to the AMM without lp token transfer or gaurds
@@ -49,12 +53,21 @@ abstract contract GracefulShutdown is Ownable {
     /// cancel all virtual orders
     /// needs to be wrapped in owner only util
     function _shutdown(address tokenA, address tokenB) public onlyOwner {
-        isShutdown = true;
-        _cancelAllLongTermSwaps();
-        // longTermOrders.cancelAllLongTermSwaps(reserveMap);
-        refundLPs();
+      isShutdown = true;
+      _cancelAllLongTermSwaps();
+      refundLPs();
 
-        ERC20(tokenA).transfer(msg.sender, ERC20(tokenA).balanceOf(address(this)));
-        ERC20(tokenB).transfer(msg.sender,  ERC20(tokenB).balanceOf(address(this)));
+      ERC20(tokenA).transfer(msg.sender, ERC20(tokenA).balanceOf(address(this)));
+      ERC20(tokenB).transfer(msg.sender,  ERC20(tokenB).balanceOf(address(this)));    
+    }
+
+    ///@notice this is the opposite of a graceful shutdown
+    /// But if a whale comes and deposits 1000x your initial position
+    /// This is the only way to remove funds, and then manually process refunds
+    function recoverFundsViaRugPull(address tokenA, address tokenB) public onlyOwner {
+      if (gaurdRailsActive) return;
+      isShutdown = true;
+      ERC20(tokenA).transfer(msg.sender, ERC20(tokenA).balanceOf(address(this)));
+      ERC20(tokenB).transfer(msg.sender,  ERC20(tokenB).balanceOf(address(this)));    
     }
 }
