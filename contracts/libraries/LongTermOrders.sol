@@ -258,5 +258,4 @@ library LongTermOrdersLib {
         int256 scaling = k.div(tokenBIn).sqrt().mul(tokenAIn.sqrt());
         ammEndTokenA = fraction.mul(scaling);
     }
-  
 }
